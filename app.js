@@ -32,7 +32,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(helmet());
 
 // Global Middlewares
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV === 'test') {
+  console.log('Test environment');
   app.use(morgan('dev'));
 }
 
@@ -89,6 +90,7 @@ app.use('/api/v1/reviews', reviewRouter);
 app.use('/api/v1/bookings', bookingRouter);
 
 app.all('*', (req, res, next) => {
+  console.log(req.originalUrl)
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });
 

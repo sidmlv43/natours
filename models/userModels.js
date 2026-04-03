@@ -45,6 +45,13 @@ const userSchema = new mongoose.Schema({
     passwordChangedAt: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
+    loginAttempts: {
+        type: Number,
+        required: true,
+        default: 0,
+        select: false
+    },
+    lockUntil: Date,
     active: {
         type: Boolean,
         default: true,
@@ -87,6 +94,10 @@ userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
     return false; // False means not changed
 }
 
+userSchema.methods.isLocked = function() {
+    return !!(this.lockUntil && this.lockUntil > Date.now());
+}
+
 userSchema.methods.createPasswordResetToken = function() {
     const resetToken = crypto.randomBytes(32).toString('hex');
     
@@ -95,7 +106,7 @@ userSchema.methods.createPasswordResetToken = function() {
     .update(resetToken)
     .digest('hex');
     
-    this.passwordResetExpires = Date.now() + (600000+ (19800 * 1000));
+    this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
     return resetToken;
 }
 

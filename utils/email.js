@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const pug = require('pug');
 const { convert } = require('html-to-text');
+const axios = require('axios'); // Move to top for better performance
 
 module.exports = class Email {
   constructor(user, url) {
@@ -12,18 +13,20 @@ module.exports = class Email {
 
   newTransport() {
     if (process.env.NODE_ENV === 'production') {
-      // sendgrid
-      nodemailer.createTransport({
+      // SendGrid
+      return nodemailer.createTransport({
         service: 'SendGrid',
-        auth: process.env.SENDGRID_USERNAME,
-        pass: process.env.SENDGRID_PASSWORD,
+        auth: {
+          user: process.env.SENDGRID_USERNAME,
+          pass: process.env.SENDGRID_PASSWORD,
+        },
       });
     }
+
+    // Default Mailtrap transport for development
     return nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: process.env.EMAIL_PORT,
-      secure: false,
-      logger: true,
       auth: {
         user: process.env.EMAIL_USERNAME,
         pass: process.env.EMAIL_PASSWORD,
@@ -31,27 +34,32 @@ module.exports = class Email {
     });
   }
 
+  // Send the actual email
   async send(template, subject) {
-    // 1. Render the HTML template
-
+    // 1) Render HTML based on a pug template
     const html = pug.renderFile(`${__dirname}/../views/email/${template}.pug`, {
       firstName: this.firstName,
       url: this.url,
       subject,
     });
 
-    // 2. Define the email options
+    // 2) Define email options
     const mailOptions = {
       from: this.from,
       to: this.to,
       subject,
       html,
       text: convert(html),
-      // html: true
     };
 
-    // 3. create a transport and send email
-    this.newTransport();
+    // 3) Handle Environments
+    if (process.env.NODE_ENV === 'test') {
+      // MOCKING: Send to WireMock instead of real email
+      const mockUrl = `${process.env.MOCK_SERVER_URL}${process.env.MOCK_EMAIL_ENDPOINT}`;
+      return await axios.post(mockUrl, mailOptions);
+    }
+
+    // 4) Create a transport and send email (Prod or Dev)
     await this.newTransport().sendMail(mailOptions);
   }
 

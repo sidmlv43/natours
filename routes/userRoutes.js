@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const userControllers = require('../controllers/userControllers');
 const authControllers = require('../controllers/authControllers');
@@ -7,10 +8,18 @@ const authControllers = require('../controllers/authControllers');
 
 const router = express.Router();
 
-router.post('/signup', authControllers.signup);
-router.post('/login', authControllers.login);
+const authLimiter = process.env.NODE_ENV === 'production' 
+  ? rateLimit({
+      max: 5,
+      windowMs: 60 * 60 * 1000,
+      message: 'Too many attempts from this IP, please try again in an hour!'
+    })
+  : (req, res, next) => next();
+
+router.post('/signup', authLimiter, authControllers.signup);
+router.post('/login', authLimiter, authControllers.login);
 router.get('/logout', authControllers.logout);
-router.post('/forgotPassword', authControllers.forgotPassword);
+router.post('/forgotPassword', authLimiter, authControllers.forgotPassword);
 router.patch('/resetPassword/:token', authControllers.resetPassword);
 
 

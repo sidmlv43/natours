@@ -20,6 +20,7 @@ const createSendToken = (user, statusCode, res) => {
       Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000
     ),
     httpOnly: true,
+    sameSite: 'strict'
   };
 
   if (process.env.NODE_ENV === 'production') cookieOptions.secure = true;
@@ -48,7 +49,7 @@ exports.signup = catchAsync(async (req, res, next) => {
   });
   
   const url=  `${req.protocol}://${req.get('host')}/me`;
-  await new Email(newUser, url).sendWelcome();
+  // await new Email(newUser, url).sendWelcome();
   createSendToken(newUser, 201, res);
 });
 
@@ -60,10 +61,29 @@ exports.login = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide email and password', 400));
   }
 
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
 
-  if (!user || !(await user.correctPassword(password, user.password))) {
+  if (!user) {
     return next(new AppError('Incorrect email or password', 401));
+  }
+
+  if (user.isLocked && user.isLocked()) {
+    return next(new AppError('Account is locked due to too many failed login attempts. Please try again in 15 minutes.', 401));
+  }
+
+  if (!(await user.correctPassword(password, user.password))) {
+    user.loginAttempts += 1;
+    if (user.loginAttempts >= 5) {
+      user.lockUntil = Date.now() + 15 * 60 * 1000;
+    }
+    await user.save({ validateBeforeSave: false });
+    return next(new AppError('Incorrect email or password', 401));
+  }
+
+  if (user.loginAttempts > 0 || user.lockUntil) {
+    user.loginAttempts = 0;
+    user.lockUntil = undefined;
+    await user.save({ validateBeforeSave: false });
   }
 
   createSendToken(user, 200, res);
@@ -80,6 +100,8 @@ exports.logout = (req, res) => {
 }
 
 exports.protect = catchAsync(async (req, res, next) => {
+  console.log("protecting the route")
+  console.log(req.headers)
   // 1> Getting the token and if it exits
   let token = '';
   if (
@@ -92,6 +114,7 @@ exports.protect = catchAsync(async (req, res, next) => {
   }
 
   if (!token) {
+    
     return next(
       new AppError('You are not logged in. Please login to get access.', 401)
     );
@@ -150,9 +173,11 @@ next();
 };
 
 exports.restrictTo = (...roles) => {
+
   return (req, res, next) => {
     // roles is an array of strings
     if (!roles.includes(req.user.role)) {
+      console.log(req.user.role)
       return next(
         new AppError('You are not authorized to perform this action.', 403)
       );
